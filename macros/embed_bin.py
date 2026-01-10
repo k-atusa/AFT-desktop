@@ -34,7 +34,7 @@ def generate_python(files): # python code
     return "\n".join(lines)
 
 def generate_javascript(files): # javascript code
-    lines = ["class GetBin {"]
+    lines = ["package GetBin", "", "class GetBin {"]
     for filepath in files:
         func_name = sanitize_name(filepath)
         with open(filepath, 'rb') as f:
