@@ -367,7 +367,7 @@ class Imgs {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = GetBin;
+    module.exports = Imgs;
 } else if (typeof window !== 'undefined') {
-    window.GetBin = GetBin;
+    window.usagImgs = Imgs;
 }
