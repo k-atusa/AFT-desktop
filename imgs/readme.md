@@ -1,6 +1,6 @@
 # USAG-Lib-macro.imgs v0.1
 
-This library has functions that gives you binary data of icon images.
+This library has functions that give you binary data of icon images.
 
 ### APIs
 
