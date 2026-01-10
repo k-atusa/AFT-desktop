@@ -1,4 +1,4 @@
-package Imgs
+package Imgs;
 
 import java.util.Base64;
 

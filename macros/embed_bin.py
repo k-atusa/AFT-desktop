@@ -104,6 +104,7 @@ def generate_go(files): # golang code
 
 def generate_java(files): # java code
     lines = [
+        "package GetBin;",
         "import java.util.Base64;", 
         "", 
         "public class GetBin {",
