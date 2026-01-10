@@ -54,8 +54,22 @@ class Imgs {
             'TuxY/R9lbarcaG2b9+fW0Q+CGhP53qb3A0ITQJSYb3buWPsdyugWiiQp9NiuNb/QxvkEIq8qldp8qcK6/HUMEKl5U0qD8J4S+ULnjrXfpsw+wUjfyMSFC5tOH5VPauFGwc4FxgrEqf70gKGGAY4ppTYrUc/pwDx2',
             'dM+avVE0VLElOXbs7BFBc1NrIE6DUqpOAP1ARJR2JSCROHZ858yT8PPBfaSojjrqqKOOOuqoo4466qgjL/4f6x9mg5o/tfIAAAAASUVORK5CYII=',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
     static zip_webp() {
         const parts = [
             'UklGRpgKAABXRUJQVlA4WAoAAAAQAAAA/wAA/wAAQUxQSN8BAAABkLNt26E5725sOxm8M7HV2rZtpzRqt2aZY7s4aZ1uv/Ek28e27z/wPs8TT0RMQCvxNxN/Y/E3EH8d8dcQf7n4y8Sv/sewfqdZc0kewITqI49X',
@@ -82,8 +96,22 @@ class Imgs {
             'kUyAf56Qz49Q36cLADwu5eVh14d7q3ymiKbXbdPunK8UlYjZSalP7RLAzzMAbiBu6MS0exGxvTQc8c9nfYcwiCOXi6FLAMdMsk7OmkjNuHBMYqslFmGFrTJQS90DBc3O1/O9jYr+cxFU/X+a4gW+sFxQsrSqlJQa',
             'S0wIofI/qWs2bhAAAACDW9Tf4rI18iidpdHBFN048SDWtAy3clrvANPuEuD9AQGDFJCuUElsWItJGP/DewAAAFbFvz30F//ux+M4ywwAAAA=',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
     static aes_png() {
         const parts = [
             'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABhmlDQ1BJQ0MgUHJvZmlsZQAAeJx9kb1Lw1AUxU9TtVIqDhYRdchQneyiIo6likWwUNoKrTqYvPRDaNKQpLg4Cq4FBz8Wqw4uzro6uAqC4AeIf4A4',
@@ -149,8 +177,22 @@ class Imgs {
             'nIzKKWAaEKn7lHcoof5997HdxwOtPsjK0lG/5ubSWF/n54VWj2rBiulcnfJBhedF5YQQ8ocqKv9n3/43OoJ+R+izMu+iy+uGXPN6cC6X0lyotSj28yMVkA0aISCuXPuMNsRbEUduaz+x88z5blYBBRRQQAEFFFBA',
             'AQUUUEABswL/H87X2WtXPP+rAAAAAElFTkSuQmCC',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
     static aes_webp() {
         const parts = [
             'UklGRrQLAABXRUJQVlA4WAoAAAAQAAAA/wAA/wAAQUxQSOYBAAABkINt2/Ev79+27WzbrtF2ra7Ve6M127Zte7L99x3Gnud+8hsRE+C8/3/IlKYTJqrciISYUWseVUHnsmVxBIRPvgPN98Sr1+YElN8br9yk91B/',
@@ -180,8 +222,22 @@ class Imgs {
             'hIw70Y3gZ7e7nSD83zq4Lghq7cr6GGZ1bSf1Kv7KxVi0Xsjjc+3kakuEaLfgXAJpD7voeKOS8Md2KLu2z7HW4S/GfRKCN9K90z4Y4QIjuUfBRsXbG70QrOcphiANDv/81lTpqlKNHIAAALIEnW9b/xr923/+AKym',
             'b9AAAA==',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
     static cloud_png() {
         const parts = [
             'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABhWlDQ1BJQ0MgUHJvZmlsZQAAeJx9kb1Lw1AUxU9TtVIqDnYQ6RChOtlFRRylikWwUNoKrTqYvPQLmjQkKS6OgmvBwY/FqoOLs64OroIg+AHiHyBO',
@@ -247,8 +303,22 @@ class Imgs {
             'wxe18lLYrzn0D//rqInvIiZ/KyRo95vNB7f93/BqChlF1XXThKVfEsiZYZ7A+YmHkKDVkyW66d5Dhw51n/2GgSH0nUGtRzfvk1J/Tmm92Sdz5lz/IUGIQPXrnxtm+5+HOfgQ4cKsYOrcCtOT39KCL0shqnJrwEHC',
             '32HkIfQWpcVP2r6y+UkeDvFTIT3VRIuxU+df5Gp1jdRchqAKrfP8THcOGaF1qxAcU1psyOuMv3Xq1M72892kHHLIIYcccsghhxxyyCGHHEYE/j/s0I0aHO+VaAAAAABJRU5ErkJggg==',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
     static cloud_webp() {
         const parts = [
             'UklGRsYLAABXRUJQVlA4WAoAAAAQAAAA/wAA/wAAQUxQSNQBAAABkGvb1rE9z8/YtkvbRvfbts0LiJ3UTrpUrmzbtm29ePYF5DnnxE9ETICy/v8hu0zPIzm2NRO61+1/BaKvR3Og39K3INxJpy/3GWh30olrtRLk',
@@ -278,7 +348,26 @@ class Imgs {
             'eL7TPV6dyW63OBJmtSXYDaOVUn8faYKHGZojEHHUNfOivqLXa/8f/b9nAPfmwrlUgSj/PnmSOtOaTX6y6lIiJvtGC6NqGKyxsf7yvpuE13b5LZoGyX2/Vnfn6s8iYZb0Dx0DucgoS2q3wY0Kz3wjAT8cunrhAVN7',
             'bOAAA63NvFB9ngAAEat5vFUgAAAAAA==',
         ];
-        return Buffer.from(parts.join(''), 'base64');
+        const base64Str = parts.join('');
+        if (typeof Buffer !== 'undefined') { // Node.js env
+            return Buffer.from(base64Str, 'base64');
+        } else if (typeof atob === 'function') { // Browser env
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        } else {
+            throw new Error('Unsupported environment');
+        }
     }
+
 }
-module.exports = Imgs;
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = GetBin;
+} else if (typeof window !== 'undefined') {
+    window.GetBin = GetBin;
+}

@@ -34,7 +34,7 @@ def generate_python(files): # python code
     return "\n".join(lines)
 
 def generate_javascript(files): # javascript code
-    lines = ["package GetBin", "", "class GetBin {"]
+    lines = ["class GetBin {"]
     for filepath in files:
         func_name = sanitize_name(filepath)
         with open(filepath, 'rb') as f:
@@ -45,10 +45,31 @@ def generate_javascript(files): # javascript code
         for chunk in chunks:
             lines.append(f"            '{chunk}',")
         lines.append("        ];")
-        lines.append("        return Buffer.from(parts.join(''), 'base64');")
+        
+        lines.append("        const base64Str = parts.join('');")
+        lines.append("        if (typeof Buffer !== 'undefined') { // Node.js env")
+        lines.append("            return Buffer.from(base64Str, 'base64');")
+        lines.append("        } else if (typeof atob === 'function') { // Browser env")
+        lines.append("            const binaryString = atob(base64Str);")
+        lines.append("            const len = binaryString.length;")
+        lines.append("            const bytes = new Uint8Array(len);")
+        lines.append("            for (let i = 0; i < len; i++) {")
+        lines.append("                bytes[i] = binaryString.charCodeAt(i);")
+        lines.append("            }")
+        lines.append("            return bytes;")
+        lines.append("        } else {")
+        lines.append("            throw new Error('Unsupported environment');")
+        lines.append("        }")
         lines.append("    }")
+        lines.append("")
+        
     lines.append("}")
-    lines.append("module.exports = GetBin;")
+    lines.append("")
+    lines.append("if (typeof module !== 'undefined' && module.exports) {")
+    lines.append("    module.exports = GetBin;")
+    lines.append("} else if (typeof window !== 'undefined') {")
+    lines.append("    window.GetBin = GetBin;")
+    lines.append("}")
     return "\n".join(lines)
 
 def generate_go(files): # golang code
