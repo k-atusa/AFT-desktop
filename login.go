@@ -2,7 +2,7 @@ package main
 
 // go mod init example.com
 // go mod tidy
-// go build -ldflags="-H windowsgui -s -w" -trimpath -o aft.exe login.go viewer.go
+// go build -ldflags="-H windowsgui -s -w" -trimpath -o aft.exe .
 // go build -ldflags="-s -w" -o aft .
 // gcc --version
 // sudo apt-get install pkg-config libgl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
