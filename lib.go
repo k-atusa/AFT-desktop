@@ -442,6 +442,18 @@ func (a *AVault) prehead() []byte {
 	return v
 }
 
+func (a *AVault) NewKeypair() error {
+	var err error
+	if a.Algo == "ecc1" {
+		a.Public, a.Private, err = new(Bencrypt.ECC1).Genkey()
+	} else if a.Algo == "rsa1" {
+		a.Public, a.Private, err = new(Bencrypt.RSA1).Genkey(4096)
+	} else {
+		return errors.New("unsupported algorithm")
+	}
+	return err
+}
+
 // load vault from disk
 func (a *AVault) Load(pw string, kf []byte) (string, error) {
 	// 1. find account.*, name.* files
