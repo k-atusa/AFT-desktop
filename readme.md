@@ -2,7 +2,7 @@
 
 project USAG: Advanced File Transfer desktop version
 
-> AFT is simple secure storage for keeping important data and secrets.
+> AFT is simple secure storage for keeping important data and secrets safe.
 
 ## CLI Usage
 
