@@ -120,7 +120,7 @@ func (p *TPprotocol) syncStatus(stop chan bool) {
 	}
 }
 
-// handshake with receiver, returns peer (public key, my public key, my private key)
+// handshake with receiver, returns (peer public key, my public key, my private key)
 func (p *TPprotocol) handshakeSend() ([]byte, []byte, []byte, error) {
 	// 1. Make key pair
 	var myPub, myPriv []byte
@@ -225,13 +225,13 @@ func (p *TPprotocol) handshakeReceive() ([]byte, []byte, []byte, error) {
 	return peerPub, myPub, myPriv, nil
 }
 
-// Send memory data
-func (p *TPprotocol) SendData(data []byte, smsg string) error {
+// Send memory data, public key is [from, to]
+func (p *TPprotocol) SendData(data []byte, smsg string) ([]byte, []byte, error) {
 	// 1. Handshake
 	p.setStage(STAGE_HANDSHAKE)
-	peerPub, _, myPriv, err := p.handshakeSend()
+	peerPub, myPub, myPriv, err := p.handshakeSend()
 	if err != nil {
-		return err
+		return myPub, peerPub, err
 	}
 	stop := make(chan bool)
 	go p.syncStatus(stop)
@@ -253,7 +253,7 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 	if err != nil {
 		p.setStage(STAGE_ERROR)
 		stop <- false
-		return err
+		return myPub, peerPub, err
 	}
 
 	// 3. Encrypt body
@@ -264,7 +264,7 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 	if err != nil {
 		p.setStage(STAGE_ERROR)
 		stop <- false
-		return err
+		return myPub, peerPub, err
 	}
 
 	// 4. Build Payload with Framing
@@ -272,7 +272,7 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 	if err := ops.Write(&headerBuf, opsHead); err != nil {
 		p.setStage(STAGE_ERROR)
 		stop <- false
-		return err
+		return myPub, peerPub, err
 	}
 	payload := append(headerBuf.Bytes(), encBody...)
 	encBody = nil
@@ -285,7 +285,7 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 	p.setTotal(totalSize)
 	if _, err := p.conn.Write(Opsec.EncodeInt(totalSize, 8)); err != nil {
 		p.setStage(STAGE_ERROR)
-		return err
+		return myPub, peerPub, err
 	}
 
 	// 6. send payload
@@ -294,7 +294,7 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 		n, err := p.conn.Write(payload[currentSent:min(currentSent+1024, totalSize)])
 		if err != nil {
 			p.setStage(STAGE_ERROR)
-			return err
+			return myPub, peerPub, err
 		}
 		currentSent += uint64(n)
 		p.setSent(currentSent)
@@ -304,24 +304,24 @@ func (p *TPprotocol) SendData(data []byte, smsg string) error {
 	var term [8]byte
 	if _, err := io.ReadFull(p.conn, term[:]); err != nil {
 		p.setStage(STAGE_ERROR)
-		return err
+		return myPub, peerPub, err
 	}
 	if term != p.zero8 {
 		p.setStage(STAGE_ERROR)
-		return errors.New("abnormal termination signal")
+		return myPub, peerPub, errors.New("abnormal termination signal")
 	}
 	p.setStage(STAGE_COMPLETE)
-	return nil
+	return myPub, peerPub, nil
 }
 
-// Receive to memory data
-func (p *TPprotocol) ReceiveData() ([]byte, string, error) {
+// Receive to memory data, public key is [from, to]
+func (p *TPprotocol) ReceiveData() ([]byte, []byte, []byte, string, error) {
 	// 1. Handshake
 	p.setStage(STAGE_HANDSHAKE)
-	peerPub, _, myPriv, err := p.handshakeReceive()
+	peerPub, myPub, myPriv, err := p.handshakeReceive()
 	if err != nil {
 		p.setStage(STAGE_ERROR)
-		return nil, "", err
+		return peerPub, myPub, nil, "", err
 	}
 
 	// 2. Wait for Status (Start Signal)
@@ -331,14 +331,14 @@ func (p *TPprotocol) ReceiveData() ([]byte, string, error) {
 	for {
 		if _, err := io.ReadFull(p.conn, buf8[:]); err != nil {
 			p.setStage(STAGE_ERROR)
-			return nil, "", err
+			return peerPub, myPub, nil, "", err
 		}
 
 		if buf8 == p.zero8 {
 			continue // Still preparing
 		} else if buf8 == p.max8 {
 			p.setStage(STAGE_ERROR)
-			return nil, "", errors.New("remote error reported")
+			return peerPub, myPub, nil, "", errors.New("remote error reported")
 		} else {
 			totalSize = Opsec.DecodeInt(buf8[:])
 			p.setTotal(totalSize) // Total transmission size (Header + Body)
@@ -363,34 +363,37 @@ func (p *TPprotocol) ReceiveData() ([]byte, string, error) {
 				break
 			}
 			p.setStage(STAGE_ERROR)
-			return nil, "", err
+			return peerPub, myPub, nil, "", err
 		}
 	}
 
-	// 4. Parse & Decrypt Header
+	// 4. Send Termination
+	if _, err := p.conn.Write(p.zero8[:]); err != nil {
+		p.setStage(STAGE_ERROR)
+		return peerPub, myPub, nil, "", err
+	}
+
+	// 5. Parse & Decrypt Header
 	bufReader := bytes.NewReader(payload)
 	ops := new(Opsec.Opsec)
 	headBytes, err := ops.Read(bufReader, 0)
 	if err != nil {
 		p.setStage(STAGE_ERROR)
-		p.conn.Write(p.max8[:])
-		return nil, "", err
+		return peerPub, myPub, nil, "", err
 	}
 	ops.View(headBytes)
 	if err := ops.Decpub(myPriv, peerPub); err != nil {
 		p.setStage(STAGE_ERROR)
-		p.conn.Write(p.max8[:])
-		return nil, "", err
+		return peerPub, myPub, nil, "", err
 	}
 
-	// 5. Decrypt Body
+	// 6. Decrypt Body
 	p.setStage(STAGE_ENCRYPTING)
 	bodyOffset := totalSize - uint64(bufReader.Len())
 	encBody := payload[bodyOffset:]
 	if ops.BodyAlgo != "gcm1" {
 		p.setStage(STAGE_ERROR)
-		p.conn.Write(p.max8[:])
-		return nil, "", errors.New("unsupported body algorithm: " + ops.BodyAlgo)
+		return peerPub, myPub, nil, "", errors.New("unsupported body algorithm: " + ops.BodyAlgo)
 	}
 	var key [44]byte
 	copy(key[:], ops.BodyKey)
@@ -398,17 +401,11 @@ func (p *TPprotocol) ReceiveData() ([]byte, string, error) {
 	decBody, err := aes.DeAESGCM(key, encBody)
 	if err != nil {
 		p.setStage(STAGE_ERROR)
-		p.conn.Write(p.max8[:])
-		return nil, "", err
+		return peerPub, myPub, nil, "", err
 	}
 
-	// 6. Send Termination
-	if _, err := p.conn.Write(p.zero8[:]); err != nil {
-		p.setStage(STAGE_ERROR)
-		return nil, "", err
-	}
 	p.setStage(STAGE_COMPLETE)
-	return decBody, ops.Smsg, nil
+	return peerPub, myPub, decBody, ops.Smsg, nil
 }
 
 // AFT Vault
@@ -465,11 +462,11 @@ func (a *AVault) Load(pw string, kf []byte) (string, error) {
 	accPath := ""
 	nmPath := ""
 	for _, f := range files {
-		if !f.IsDir() && strings.HasPrefix(f.Name(), "account.") {
+		if !f.IsDir() && strings.HasPrefix(f.Name(), "account.") && !strings.HasSuffix(f.Name(), ".old") {
 			found++
 			accPath = filepath.Join(a.Path, f.Name())
 		}
-		if !f.IsDir() && strings.HasPrefix(f.Name(), "name.") {
+		if !f.IsDir() && strings.HasPrefix(f.Name(), "name.") && !strings.HasSuffix(f.Name(), ".old") {
 			found++
 			nmPath = filepath.Join(a.Path, f.Name())
 		}
@@ -485,10 +482,11 @@ func (a *AVault) Load(pw string, kf []byte) (string, error) {
 	}
 	var opsAcc Opsec.Opsec
 	opsAcc.Reset()
-	_, err = opsAcc.Read(bytes.NewReader(accData), 0)
+	h, err := opsAcc.Read(bytes.NewReader(accData), 0)
 	if err != nil {
 		return "", err
 	}
+	opsAcc.View(h)
 	if err := opsAcc.Decpw([]byte(pw), kf); err != nil {
 		return opsAcc.Msg, err
 	}
@@ -519,11 +517,11 @@ func (a *AVault) Load(pw string, kf []byte) (string, error) {
 	var opsName Opsec.Opsec
 	opsName.Reset()
 	rd := bytes.NewReader(nameData)
-	_, err = opsName.Read(rd, 0)
+	h, err = opsName.Read(rd, 0)
 	if err != nil {
 		return opsAcc.Msg, err
 	}
-
+	opsName.View(h)
 	if err := opsName.Decpub(a.Private, a.Public); err != nil {
 		return opsAcc.Msg, err
 	}
@@ -557,15 +555,16 @@ func (a *AVault) Load(pw string, kf []byte) (string, error) {
 	a.TreeView[""] = make([]string, 0)
 	for plain := range a.PtoCtbl {
 		idx := strings.IndexAny(plain, "/")
-		if idx == -1 { // global file
+		if idx == -1 { // golbal file
 			a.TreeView[""] = append(a.TreeView[""], plain)
-		} else {
-			parent := plain[:idx+1]
-			child := plain[idx+1:]
+		} else { // folder or file in folder
+			parent, child := plain[:idx+1], plain[idx+1:]
 			if _, ok := a.TreeView[parent]; !ok { // add parent folder
 				a.TreeView[parent] = make([]string, 0)
 			}
-			if child != "" { // add child file
+			if child == "" { // add parent folder to root
+				a.TreeView[""] = append(a.TreeView[""], parent)
+			} else { // add child file
 				a.TreeView[parent] = append(a.TreeView[parent], child)
 			}
 		}
@@ -621,7 +620,9 @@ func (a *AVault) StoreName() error {
 	if prehead != nil {
 		file.Write(prehead)
 	}
-	file.Write(header)
+	if err := ops.Write(file, header); err != nil {
+		return err
+	}
 	file.Write(encBody)
 	return nil
 }
@@ -659,8 +660,7 @@ func (a *AVault) StoreAccount(pw string, kf []byte, msg string) error {
 	if prehead != nil {
 		file.Write(prehead)
 	}
-	file.Write(header)
-	return nil
+	return ops.Write(file, header)
 }
 
 // add file or folder to vault
@@ -697,10 +697,15 @@ func (a *AVault) Add(path string, dirname string) error {
 	a.PtoCtbl[info.Name()+"/"] = cParent
 	a.CtoPtbl[cParent] = info.Name() + "/"
 	a.TreeView[info.Name()+"/"] = make([]string, 0)
+	a.TreeView[""] = append(a.TreeView[""], info.Name()+"/")
+	sort.Strings(a.TreeView[""])
 
 	files, err := os.ReadDir(path)
 	if err != nil {
 		return err
+	}
+	if len(files) == 0 {
+		return a.StoreName() // store empty folder
 	}
 	for _, file := range files {
 		if !file.IsDir() { // add only first layer
@@ -719,7 +724,7 @@ func (a *AVault) Del(name string) error {
 	// delete actual files, update tables
 	for plain, cipher := range a.PtoCtbl {
 		if plain == name || (isFolder && strings.HasPrefix(plain, name)) {
-			os.Remove(filepath.Join(a.Path, cipher))
+			os.RemoveAll(filepath.Join(a.Path, cipher))
 			delete(a.CtoPtbl, cipher)
 			delete(a.PtoCtbl, plain)
 		}
@@ -763,7 +768,22 @@ func (a *AVault) Rename(src string, dst string) error {
 	}
 	isFolder := strings.HasSuffix(src, "/")
 	if isFolder && !strings.HasSuffix(dst, "/") {
-		dst += "/"
+		return errors.New("invalid destination for folder")
+	}
+	idx0 := strings.Index(src, "/")
+	idx1 := strings.Index(dst, "/")
+	if !isFolder {
+		dir0 := ""
+		if idx0 != -1 {
+			dir0 = src[:idx0+1]
+		}
+		dir1 := ""
+		if idx1 != -1 {
+			dir1 = dst[:idx1+1]
+		}
+		if dir0 != dir1 {
+			return errors.New("invalid destination for file")
+		}
 	}
 
 	// rename tables
@@ -789,12 +809,12 @@ func (a *AVault) Rename(src string, dst string) error {
 
 	} else {
 		parent, oldChild := "", src
-		if idx := strings.Index(src, "/"); idx != -1 {
-			parent, oldChild = src[:idx+1], src[idx+1:]
+		if idx0 != -1 {
+			parent, oldChild = src[:idx0+1], src[idx0+1:]
 		}
-		_, newChild := "", dst
-		if idx := strings.Index(dst, "/"); idx != -1 {
-			newChild = dst[idx+1:]
+		newChild := dst
+		if idx1 != -1 {
+			newChild = dst[idx1+1:]
 		}
 		idx := slices.Index(a.TreeView[parent], oldChild)
 		if idx != -1 {
@@ -821,10 +841,11 @@ func (a *AVault) Read(name string) ([]byte, error) {
 	var ops Opsec.Opsec
 	ops.Reset()
 	rd := bytes.NewReader(data)
-	_, err = ops.Read(rd, 0)
+	h, err := ops.Read(rd, 0)
 	if err != nil {
 		return nil, err
 	}
+	ops.View(h)
 	if err := ops.Decpub(a.Private, a.Public); err != nil {
 		return nil, err
 	}
@@ -838,7 +859,7 @@ func (a *AVault) Read(name string) ([]byte, error) {
 	return aes.DeAESGCM(key, body)
 }
 
-// write file to vault
+// write file to vault, make new if not exists
 func (a *AVault) Write(name string, data []byte) error {
 	// check size
 	if int64(len(data)) > a.Limit {
@@ -892,7 +913,11 @@ func (a *AVault) Write(name string, data []byte) error {
 	var key [44]byte
 	copy(key[:], ops.BodyKey)
 	aes := new(Bencrypt.AES1)
-	encBody, _ := aes.EnAESGCM(key, data)
+	encBody, err := aes.EnAESGCM(key, data)
+	data = nil
+	if err != nil {
+		return err
+	}
 
 	// write file
 	f, err := os.Create(filepath.Join(a.Path, cipher))
@@ -903,7 +928,9 @@ func (a *AVault) Write(name string, data []byte) error {
 	if pre := a.prehead(); pre != nil {
 		f.Write(pre)
 	}
-	f.Write(header)
+	if err := ops.Write(f, header); err != nil {
+		return err
+	}
 	f.Write(encBody)
 	return a.StoreName()
 }
@@ -964,11 +991,12 @@ func (a *AVault) Trim() (int, error) {
 			a.TreeView[""] = append(a.TreeView[""], plain)
 		} else { // folders and files in folders
 			parent, child := plain[:idx+1], plain[idx+1:]
-			if _, ok := a.TreeView[parent]; !ok {
+			if _, ok := a.TreeView[parent]; !ok { // add parent folder
 				a.TreeView[parent] = make([]string, 0)
-				a.TreeView[""] = append(a.TreeView[""], parent)
 			}
-			if child != "" {
+			if child == "" { // add parent folder to root
+				a.TreeView[""] = append(a.TreeView[""], parent)
+			} else { // add child file
 				a.TreeView[parent] = append(a.TreeView[parent], child)
 			}
 		}

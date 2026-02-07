@@ -2,30 +2,35 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/k-atusa/USAG-Lib/Opsec"
 )
 
 // command line parser
 type Config struct {
-	Mode   string
-	Target string
-	Output string
-	PW     string
-	KF     []byte
-	Msg    string
+	Mode     string
+	Target   string
+	Output   string
+	PW       string
+	KF       []byte
+	Msg      string
+	IsLegacy bool
 }
 
 func (cfg *Config) Init() {
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError) // empty string means auto
 	fs.StringVar(&cfg.Mode, "m", "help", "work mode: import, export, view, trim, version, help")
-	fs.StringVar(&cfg.PW, "o", "", "output folder")
+	fs.StringVar(&cfg.Output, "o", "", "output folder")
 	fs.StringVar(&cfg.PW, "pw", "", "password")
 	fs.StringVar(&cfg.Msg, "msg", "", "message")
+	fs.BoolVar(&cfg.IsLegacy, "legacy", false, "use legacy mode (rsa1, png)")
 
 	// get keyfile
 	kfpath := ""
@@ -57,6 +62,9 @@ func f_import() error {
 	if Cfg.Target == "" || Cfg.Output == "" {
 		return errors.New("target and output are required for import")
 	}
+	if err := os.MkdirAll(Cfg.Output, 0755); err != nil {
+		return err
+	}
 	info, err := os.Stat(Cfg.Output)
 	if err != nil {
 		return err
@@ -64,19 +72,15 @@ func f_import() error {
 	if !info.IsDir() {
 		return errors.New("output is not a directory")
 	}
-	if err := os.MkdirAll(Cfg.Output, 0755); err != nil {
-		return err
-	}
 
 	// make AVault
-	v := &AVault{
-		Path:     Cfg.Output,
-		Limit:    512 * 1024 * 1024,
-		Algo:     "ecc1",
-		Ext:      "webp",
-		TreeView: make(map[string][]string),
-		PtoCtbl:  make(map[string]string),
-		CtoPtbl:  make(map[string]string),
+	v := &AVault{Path: Cfg.Output}
+	if Cfg.IsLegacy {
+		v.Algo = "rsa1"
+		v.Ext = "png"
+	} else {
+		v.Algo = "ecc1"
+		v.Ext = "webp"
 	}
 	if err := v.NewKeypair(); err != nil {
 		return err
@@ -106,7 +110,7 @@ func f_import() error {
 func f_export() error {
 	// check arguments
 	if Cfg.Target == "" || Cfg.Output == "" {
-		return errors.New("targetand output are required for export")
+		return errors.New("target and output are required for export")
 	}
 	if err := os.MkdirAll(Cfg.Output, 0755); err != nil {
 		return err
@@ -116,7 +120,7 @@ func f_export() error {
 	v := &AVault{Path: Cfg.Target}
 	msg, err := v.Load(Cfg.PW, Cfg.KF)
 	if msg != "" {
-		fmt.Printf("[MSG]: %s\n", msg)
+		fmt.Printf("[msg] %s\n", msg)
 	}
 	if err != nil {
 		return err
@@ -158,11 +162,95 @@ func f_export() error {
 }
 
 func f_view() error {
-	// 볼트의 모든 정보와 파일 리스트를 보여줌
+	// check arguments, load vault
+	if Cfg.Target == "" {
+		return errors.New("target is required for view")
+	}
+	v := &AVault{Path: Cfg.Target}
+	msg, err := v.Load(Cfg.PW, Cfg.KF)
+	if err != nil {
+		fmt.Printf("[msg] %s\n", msg)
+		return err
+	}
+
+	// print vault metadata
+	fmt.Println("========== AFT Vault Metadata ==========")
+	fmt.Printf("Message     : %s\n", msg)
+	fmt.Printf("Algorithm   : %s\n", v.Algo)
+	fmt.Printf("File Format : %s\n", v.Ext)
+	fmt.Printf("Total Items : %d\n", len(v.PtoCtbl))
+	fmt.Printf("Public Key  : %s (%d B)\n", hex.EncodeToString(Opsec.Crc32(v.Public)), len(v.Public))
+	fmt.Printf("Private Key : %s (%d B)\n", hex.EncodeToString(Opsec.Crc32(v.Private)), len(v.Private))
+
+	// print file list
+	fmt.Println("\n========== Files List ==========")
+	if len(v.TreeView[""]) == 0 {
+		fmt.Println("(No items found in vault)")
+	}
+	for _, name := range v.TreeView[""] {
+		if strings.HasSuffix(name, "/") {
+			fmt.Println(name)
+			children := v.TreeView[name]
+			for _, child := range children {
+				fmt.Printf("    %s\n", child)
+			}
+		} else {
+			fmt.Println(name)
+		}
+	}
+	return nil
 }
 
 func f_trim() error {
-	// 볼트를 트림하고 키 쌍을 새로 생성한 후 모든 파일을 업데이트
+	if Cfg.Target == "" {
+		return errors.New("target is required for trim")
+	}
+	v := &AVault{Path: Cfg.Target}
+	msg, err := v.Load(Cfg.PW, Cfg.KF)
+	if err != nil {
+		return err
+	}
+
+	// trim vault
+	fmt.Println("Triming vault...")
+	count, err := v.Trim()
+	fmt.Printf("Sync completed: %d items cleaned.\n", count)
+	if err != nil {
+		return err
+	}
+
+	// make new key pair
+	oldPub, oldPriv := v.Public, v.Private
+	fmt.Println("Regenerating new key pair...")
+	v.NewKeypair()
+	newPub, newPriv := v.Public, v.Private
+
+	// re-encrypt all files
+	for plain := range v.PtoCtbl {
+		if strings.HasSuffix(plain, "/") {
+			continue
+		}
+		fmt.Printf("Re-encrypting: %s\n", plain)
+
+		v.Public, v.Private = oldPub, oldPriv
+		data, err := v.Read(plain)
+		if err != nil {
+			fmt.Printf("    Skip: Decryption failed\n")
+			continue
+		}
+
+		v.Public, v.Private = newPub, newPriv
+		v.Write(plain, data)
+	}
+
+	// save account and name
+	fmt.Println("Saving account and name...")
+	v.Public, v.Private = newPub, newPriv
+	err = v.StoreAccount(Cfg.PW, Cfg.KF, msg)
+	if err != nil {
+		return err
+	}
+	return v.StoreName()
 }
 
 var Cfg Config
@@ -170,7 +258,7 @@ var Cfg Config
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			fmt.Printf("critical: %v", err)
+			fmt.Printf("[PANIC] %v", err)
 		}
 	}()
 	var err error
@@ -195,6 +283,6 @@ func main() {
 		fmt.Println("trim: trim and rebuild +(pw, kf)")
 	}
 	if err != nil {
-		fmt.Printf("\nerror: %v\n", err)
+		fmt.Printf("\n[ERROR] %v\n", err)
 	}
 }
